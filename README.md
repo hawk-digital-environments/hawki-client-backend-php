@@ -1,9 +1,9 @@
 # HAWKI Client Backend (PHP)
 
 [![Latest Version](https://img.shields.io/packagist/v/hawk-hhg/hawki-client-backend.svg)](https://packagist.org/packages/hawk-hhg/hawki-client-backend)
-[![PHP Version](https://img.shields.io/packagist/php/hawk-hhg/hawki-client-backend)](https://packagist.org/packages/hawk-hhg/hawki-client-backend)
 [![Total Downloads](https://img.shields.io/packagist/dt/hawk-hhg/hawki-client-backend.svg)](https://packagist.org/packages/hawk-hhg/hawki-client-backend)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](https://github.com/hawk-digital-environments/hawki-client-backend-php/blob/main/LICENSE)
+[![Create new Release (PHP)](https://github.com/hawk-digital-environments/hawki-client-backend-php/actions/workflows/release.yml/badge.svg)](https://github.com/hawk-digital-environments/hawki-client-backend-php/actions/workflows/release.yml)
 
 This package provides a secure, encrypted bridge between your PHP application and your HAWKI instance. It simplifies the
 process of managing user connections for HAWKI's external applications by handling API communication, data
