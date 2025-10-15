@@ -1,0 +1,5 @@
+{
+  "repo_notes": {
+    "content": "The main content of the relevant code is found in /src with the respective tests at /tests. The code under bin/env is not part of the main application and is only used to help in the development process."
+  }
+}
