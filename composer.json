@@ -25,5 +25,5 @@
     "test:unit:coverage:text": "XDEBUG_MODE=coverage phpunit --testsuite unit --exclude-group integration --coverage-text",
     "test:unit:coverage:clover": "XDEBUG_MODE=coverage phpunit --testsuite unit --coverage-clover .phpunit.coverage/coverage-clover.xml"
   },
-  "version": "1.0.0"
+  "version": "1.1.0"
 }
