@@ -1,0 +1,331 @@
+#!/bin/sh
+# Standalone Node.js installer and launcher that runs in sh for maximum compatibility
+
+set -e  # Exit on error
+
+# =================== CONFIGURATION ===================
+# Node.js version to use
+# See what is currently available at https://nodejs.org/en/download
+# Can be set to "SYSTEM" to enforce the use of the system Node.js version - NOT RECOMMENDED!
+NODE_VERSION="SYSTEM"
+# Central storage for everything this script needs to store
+ENV_HOME="${HOME}/.bin-env"
+# Central storage location for Node.js binaries
+NODE_DIR="${ENV_HOME}/node"
+# Shared npm cache directory
+NPM_CACHE_DIR="${ENV_HOME}/npm-cache"
+# The directory of this script
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# The directory where the node.js sources of this script are stored
+ENV_DIR="${SCRIPT_DIR}/_env"
+# Project directory (this is the parent directory of the script)
+PROJECT_DIR="$(realpath "$SCRIPT_DIR/..")"
+# Print debug messages
+VERBOSE=0
+# ==============================???====================
+
+# Utility functions
+command_exists() {
+  command -v "$1" >/dev/null 2>&1
+}
+
+error() {
+  echo "ERROR: $1" >&2
+  exit 1
+}
+
+confirm_action() {
+  prompt="$1"
+  printf "%s [Y/n] " "$prompt"
+  read -r answer
+  case "$answer" in
+    [nN]|[nN][oO]) return 1 ;;
+    *) return 0 ;;
+  esac
+}
+
+calculate_file_hash() {
+  file="$1"
+  if command_exists md5sum; then
+    md5sum "$file" | cut -d' ' -f1
+  elif command_exists shasum; then
+    shasum -a 1 "$file" | cut -d' ' -f1
+  elif command_exists md5; then
+    md5 -q "$file"
+  else
+    cat "$file" | cksum | cut -d' ' -f1
+  fi
+}
+
+download_file() {
+  URL="$1"
+  OUTPUT="$2"
+
+  if command_exists curl; then
+    curl -fsSL "$URL" -o "$OUTPUT"
+  elif command_exists wget; then
+    wget -q "$URL" -O "$OUTPUT"
+  else
+    error "Neither curl nor wget found. Please install one of them to continue."
+  fi
+}
+
+# System detection
+get_system_info() {
+  # Detect OS
+  case "$(uname -s)" in
+    Linux*)  OS="linux";;
+    Darwin*) OS="darwin";;
+    CYGWIN*|MINGW*|MSYS*) error "Running this script from Windows is not supported, please run it in your WSL container!";;
+    *)       error "Unsupported operating system: $(uname -s)";;
+  esac
+
+  # Detect architecture
+  case "$(uname -m)" in
+    x86_64|amd64) ARCH="x64";;
+    arm64|aarch64) ARCH="arm64";;
+    *)            error "Unsupported architecture: $(uname -m)";;
+  esac
+
+  # Check if running in WSL
+  if [ -f /proc/version ] && grep -q "Microsoft" /proc/version; then
+    WSL=1
+  else
+    WSL=0
+  fi
+}
+
+check_dependencies() {
+  MISSING_CURL_WGET=0
+  MISSING_TAR=0
+
+  # Create the home directory if it doesn't exist
+  [ ! -d "$ENV_HOME" ] && mkdir -p "$ENV_HOME"
+
+  # Check for download tools and tar
+  (! command_exists curl && ! command_exists wget) && MISSING_CURL_WGET=1
+  ! command_exists tar && MISSING_TAR=1
+
+  # Exit if missing dependencies
+  if [ $MISSING_CURL_WGET -eq 1 ] || [ $MISSING_TAR -eq 1 ]; then
+    echo "=========================================================="
+    echo "ERROR: Missing required tools:"
+    [ $MISSING_CURL_WGET -eq 1 ] && echo "  - curl or wget (for downloading files)"
+    [ $MISSING_TAR -eq 1 ] && echo "  - tar (for extracting archives)"
+    echo "=========================================================="
+    echo ""
+    echo "Please install the missing tools before continuing:"
+    echo ""
+
+    # OS-specific installation instructions
+    case "$OS" in
+      linux)
+        if command_exists apt-get; then
+          echo "  sudo apt-get update"
+          [ $MISSING_CURL_WGET -eq 1 ] && echo "  sudo apt-get install -y curl"
+          [ $MISSING_TAR -eq 1 ] && echo "  sudo apt-get install -y tar"
+        elif command_exists yum; then
+          [ $MISSING_CURL_WGET -eq 1 ] && echo "  sudo yum install -y curl"
+          [ $MISSING_TAR -eq 1 ] && echo "  sudo yum install -y tar"
+        elif command_exists pacman; then
+          [ $MISSING_CURL_WGET -eq 1 ] && echo "  sudo pacman -S curl"
+          [ $MISSING_TAR -eq 1 ] && echo "  sudo pacman -S tar"
+        else
+          echo "Please use your system's package manager to install the missing tools."
+        fi
+        ;;
+      darwin)
+        echo "  Install Homebrew from https://brew.sh/ if not already installed"
+        [ $MISSING_CURL_WGET -eq 1 ] && echo "  brew install curl"
+        [ $MISSING_TAR -eq 1 ] && echo "  brew install gnu-tar"
+        ;;
+      *)
+        echo "Please install the following tools using your system's package manager:"
+        [ $MISSING_CURL_WGET -eq 1 ] && echo "  - curl or wget"
+        [ $MISSING_TAR -eq 1 ] && echo "  - tar"
+        ;;
+    esac
+
+    echo ""
+    echo "After installing the required tools, please run this script again."
+    exit 1
+  fi
+}
+
+set_node_paths() {
+  NODE_DOWNLOAD_URL="https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-${OS}-${ARCH}.tar.gz"
+  NODE_DIRNAME="node-v${NODE_VERSION}-${OS}-${ARCH}"
+  NODE_BIN_DIR="${NODE_DIR}/${NODE_DIRNAME}/bin"
+  NODE_BIN="${NODE_BIN_DIR}/node"
+  NPM_BIN="${NODE_BIN_DIR}/npm"
+}
+
+configure_npm() {
+  mkdir -p "$NPM_CACHE_DIR"
+  export npm_config_cache="$NPM_CACHE_DIR"
+  export NO_UPDATE_NOTIFIER="1"
+}
+
+check_node() {
+  # Check system Node.js first
+  if command_exists node; then
+    SYSTEM_NODE_VERSION=$(node -v 2>/dev/null | sed 's/^v//')
+    if [ "$NODE_VERSION" = "SYSTEM" ]; then
+      [ $VERBOSE -eq 1 ] && echo "Using system Node.js v${SYSTEM_NODE_VERSION} (ENFORCED)"
+      NODE_BIN="node"
+      NPM_BIN="npm"
+      return 0
+    fi
+
+    if [ -n "$SYSTEM_NODE_VERSION" ]; then
+      SYSTEM_MAJOR=$(echo "$SYSTEM_NODE_VERSION" | cut -d. -f1)
+      REQUIRED_MAJOR=$(echo "$NODE_VERSION" | cut -d. -f1)
+      if [ "$SYSTEM_MAJOR" -eq "$REQUIRED_MAJOR" ]; then
+        [ $VERBOSE -eq 1 ] && echo "Using system Node.js v${SYSTEM_NODE_VERSION}"
+        NODE_BIN="node"
+        NPM_BIN="npm"
+        return 0
+      fi
+    fi
+  fi
+
+  # Check for cached version
+  if [ -x "$NODE_BIN" ]; then
+    [ $VERBOSE -eq 1 ] && echo "Using cached Node.js v${NODE_VERSION}"
+    return 0
+  fi
+
+  return 1
+}
+
+setup_node() {
+  check_node && return
+
+  echo "Node.js v${NODE_VERSION} is required but not found."
+  echo "I can download and set up a version for you. It will ONLY be used by this script and not affect your system."
+
+  if ! confirm_action "Should I proceed setting up Node.js v${NODE_VERSION}?"; then
+    error "Node.js installation was cancelled. Cannot continue without Node.js v${NODE_VERSION}."
+  fi
+
+  [ $VERBOSE -eq 1 ] && echo "Setting up Node.js v${NODE_VERSION}..."
+  mkdir -p "$NODE_DIR"
+
+  TEMP_DIR=$(mktemp -d)
+  DOWNLOAD_FILE="${TEMP_DIR}/node.tar.gz"
+
+  [ $VERBOSE -eq 1 ] && echo "Downloading Node.js from ${NODE_DOWNLOAD_URL}..."
+  download_file "$NODE_DOWNLOAD_URL" "$DOWNLOAD_FILE"
+
+  [ $VERBOSE -eq 1 ] && echo "Extracting Node.js..."
+  tar -xzf "$DOWNLOAD_FILE" -C "$NODE_DIR"
+
+  # Verify extraction
+  [ ! -x "$NODE_BIN" ] && error "Failed to extract Node.js properly. The binary is not executable."
+
+  rm -rf "$TEMP_DIR"
+  [ $VERBOSE -eq 1 ] && echo "Node.js v${NODE_VERSION} setup complete"
+}
+
+install_dependencies() {
+  [ ! -f "${ENV_DIR}/package.json" ] && return 0
+
+  CURRENT_HASH=$(calculate_file_hash "${ENV_DIR}/package.json")
+  HASH_FILE="${ENV_DIR}/.package.hash"
+
+  NEED_INSTALL=""
+  if [ ! -d "${ENV_DIR}/node_modules" ] || [ ! -f "$HASH_FILE" ]; then
+    NEED_INSTALL=1
+  else
+    STORED_HASH=$(cat "$HASH_FILE")
+    [ "$CURRENT_HASH" != "$STORED_HASH" ] && NEED_INSTALL=1
+  fi
+
+  if [ -n "$NEED_INSTALL" ]; then
+    cd "$ENV_DIR"
+    export PATH="$NODE_BIN_DIR:$PATH"
+
+    if [ $VERBOSE -eq 1 ]; then
+      echo "Installing npm dependencies..."
+      "$NPM_BIN" install --no-update-notifier
+    else
+      "$NPM_BIN" install --no-update-notifier > /dev/null &
+      show_spinner_while_pid_is_running $! "Preparing the environment, one second..."
+      local code=$?
+      if [ $code -ne 0 ]; then
+        echo "Failed to install npm dependencies. Please try again with the --env-verbose flag for more information."
+        exit $code
+      fi
+    fi
+    echo "$CURRENT_HASH" > "$HASH_FILE"
+  fi
+}
+
+show_spinner_while_pid_is_running() {
+  local delay=0.15
+  local i=0
+  local message=${2:-"Working..."}
+
+  while kill -0 "$1" >/dev/null 2>&1; do
+    i=$((i + 1))
+    case $((i % 4)) in
+      0) printf "\r${message} ◐" ;;
+      1) printf "\r${message} ◓" ;;
+      2) printf "\r${message} ◑" ;;
+      3) printf "\r${message} ◒" ;;
+    esac
+    sleep "$delay"
+  done
+  printf "\r\033[K"
+}
+
+has_verbose_flag() {
+  for arg in "$@"; do
+    [ "$arg" = "--bin-verbose" ] && return 0
+  done
+  return 1
+}
+
+handle_bin_npm() {
+  [ "$1" != "bin:npm" ] && return
+  shift
+  cd "$ENV_DIR"
+  export PATH="$NODE_BIN_DIR:$PATH"
+  "$NPM_BIN" "$@"
+  exit $?
+}
+
+handle_bin_tsc() {
+  [ "$1" != "bin:tsc" ] && return
+  shift
+  cd "$ROOT_DIR"
+  export PATH="$NODE_BIN_DIR:$PATH"
+  "$NPM_BIN" exec -c "tsc --noEmit $@"
+  exit $?
+}
+
+# Main execution
+has_verbose_flag "$@" && VERBOSE=1
+get_system_info
+set_node_paths
+check_dependencies
+setup_node
+configure_npm
+handle_bin_npm "$@"
+install_dependencies
+handle_bin_tsc "$@"
+
+# Run the Node.js script
+[ $VERBOSE -eq 1 ] && echo "Running Node.js script..."
+TSX_PATH="${ENV_DIR}/node_modules/.bin/tsx"
+INDEX_PATH="${ENV_DIR}/index.ts"
+export PATH="$NODE_BIN_DIR:$PATH"
+export PROJECT_DIR="$PROJECT_DIR"
+export ENV_HOME="$ENV_HOME"
+export ENV_DIR="$ENV_DIR"
+export SCRIPT_DIR="$SCRIPT_DIR"
+export HOST_OS="$OS"
+export HOST_ARCH="$ARCH"
+export HOST_IS_WSL="$WSL"
+cd "$ENV_DIR"
+"$NODE_BIN" "$TSX_PATH" "$INDEX_PATH" "$@"

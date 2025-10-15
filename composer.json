@@ -1,0 +1,29 @@
+{
+  "name": "hawk-hhg/hawki-client-backend",
+  "description": "A lightweight PHP backend for using HAWKI's external apps; that provides a secure, encrypted connection to your HAWKI instance.",
+  "type": "project",
+  "license": "Apache-2.0",
+  "require": {
+    "php": "^8.2",
+    "psr/log": "^3.0",
+    "guzzlehttp/guzzle": "^7.0",
+    "hawk-hhg/hawki-crypto": "^0.5.2"
+  },
+  "require-dev": {
+    "phpunit/phpunit": "^11.5.6",
+    "roave/security-advisories": "dev-latest"
+  },
+  "autoload": {
+    "psr-4": {
+      "Hawk\\HawkiClientBackend\\": "src/",
+      "Hawk\\HawkiClientBackend\\Tests\\": "tests/"
+    }
+  },
+  "scripts": {
+    "test:unit": "phpunit --testsuite unit --exclude-group integration",
+    "test:unit:coverage": "XDEBUG_MODE=coverage phpunit --testsuite unit --exclude-group integration --coverage-html ./.phpunit.coverage; cp ./tests/coverage.dark.css .phpunit.coverage/_css/custom.css",
+    "test:unit:coverage:text": "XDEBUG_MODE=coverage phpunit --testsuite unit --exclude-group integration --coverage-text",
+    "test:unit:coverage:clover": "XDEBUG_MODE=coverage phpunit --testsuite unit --coverage-clover .phpunit.coverage/coverage-clover.xml"
+  },
+  "version": "1.0.0"
+}

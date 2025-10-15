@@ -1,0 +1,17 @@
+services:
+  app:
+    container_name: ${COMPOSE_PROJECT_NAME}-app
+    image: ${COMPOSE_PROJECT_NAME}-php:dev
+    build:
+      context: .
+      args:
+        - DOCKER_RUNTIME=${DOCKER_RUNTIME:-docker}
+        - DOCKER_GID=${DOCKER_GID:-1000}
+        - DOCKER_UID=${DOCKER_UID:-1000}
+    restart: no
+    volumes:
+      - ./:/var/www/html
+    extra_hosts:
+      - host.docker.internal:host-gateway
+volumes:
+  php_socket: null
