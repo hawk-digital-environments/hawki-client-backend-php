@@ -1,5 +1,0 @@
-{
-  "repo_notes": {
-    "content": "The relevant code is found in /src and MUST be INCLUDED with the respective tests at /tests. The directory /bin and its contents MUST be IGNORED at all times"
-  }
-}
