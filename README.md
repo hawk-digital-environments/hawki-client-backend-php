@@ -24,6 +24,11 @@ You can install the package via Composer:
 composer require hawk-hhg/hawki-client-backend
 ```
 
+## Complete documentation
+
+To get a better understanding of how the library works, please refer to the complete
+documentation: [docs/index.md](docs/index.md)
+
 ## Quick Start: Creating a Configuration Endpoint
 
 The primary role of this backend library is to provide a secure endpoint that your frontend HAWKI client can call to get
