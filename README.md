@@ -27,7 +27,7 @@ composer require hawk-hhg/hawki-client-backend
 ## Complete documentation
 
 To get a better understanding of how the library works, please refer to the complete
-documentation: [docs/index.md](docs/index.md)
+documentation: [docs/index.md](_docs/index.md)
 
 ## Quick Start: Creating a Configuration Endpoint
 
